@@ -9,6 +9,7 @@ from transformers import pipeline
 from io import StringIO
 import subprocess
 import os
+import imageio_ffmpeg as ffmpeg  # ffmpeg 경로 설정용
 
 # 평가 점수 계산 함수
 def grade(score):
@@ -35,11 +36,12 @@ def grade(score):
 
 # 업로드된 음성을 WAV 형식으로 변환
 def convert_to_wav(uploaded_file, output_path="temp_audio.wav"):
+    ffmpeg_path = ffmpeg.get_ffmpeg_exe()  # ffmpeg 실행 경로
     with open("temp_input_file", "wb") as f:
         f.write(uploaded_file.read())
     try:
         subprocess.run(
-            ["ffmpeg", "-y", "-i", "temp_input_file", output_path],
+            [ffmpeg_path, "-y", "-i", "temp_input_file", output_path],
             check=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
