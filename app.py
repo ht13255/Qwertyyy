@@ -51,6 +51,15 @@ def convert_to_wav(uploaded_file, output_path="temp_audio.wav"):
         st.error(f"파일 변환 중 오류 발생: {str(e)}")
         return None
 
+# Hugging Face의 음성 분석 모델 로드
+def load_audio_pipeline():
+    try:
+        # 명시적으로 task와 모델 정의
+        return pipeline(task="audio-classification", model="superb/hubert-large-superb-er")
+    except Exception as e:
+        st.error(f"모델 로드 중 오류 발생: {str(e)}")
+        return None
+
 # Streamlit 제목
 st.title("🎤 다양한 음성 파일 분석 및 지지음역 계산 애플리케이션")
 
@@ -98,14 +107,20 @@ if uploaded_file:
         rms = librosa.feature.rms(y=reduced_noise).mean() * 100
         volume_score = min(100, max(50, rms))  # 점수화
 
-        # 리듬 및 음정 정확도 분석 (수정된 부분)
+        # 리듬 및 음정 정확도 분석
         onset_env = librosa.onset.onset_strength(y=reduced_noise, sr=sr)
         tempo, _ = librosa.beat.beat_track(y=reduced_noise, sr=sr, onset_envelope=onset_env)
         rhythm_accuracy = min(100, max(50, 120 / tempo * 100))
 
-        # AI 분석 - 창법 및 장르
-        classifier = pipeline("audio-classification", model="superb/hubert-large-superb-er")
-        genre_prediction = classifier(wav_path)
+        # Hugging Face 모델 로드
+        classifier = load_audio_pipeline()
+        if classifier:
+            genre_prediction = classifier(wav_path)
+            genre_label = genre_prediction[0]['label']
+            genre_score = genre_prediction[0]['score']
+        else:
+            genre_label = "분석 실패"
+            genre_score = "N/A"
 
         st.write("✅ 음성 분석 완료.")
 
@@ -118,9 +133,9 @@ if uploaded_file:
             "옥타브 범위": [f"{min_octave} ~ {max_octave}"],
             "성량 점수": [f"{volume_score:.2f}점 ({grade(volume_score)})"],
             "리듬 정확도": [f"{rhythm_accuracy:.2f}%"],
-            "AI 분석 장르": [genre_prediction[0]['label']],
-            "장르 정확도": [f"{genre_prediction[0]['score']:.2f}"],
-            "장르 일치 여부": ["일치" if genre_prediction[0]['label'].lower() == target_genre.lower() else "불일치"],
+            "AI 분석 장르": [genre_label],
+            "장르 정확도": [f"{genre_score:.2f}" if genre_score != "N/A" else genre_score],
+            "장르 일치 여부": ["일치" if genre_label.lower() == target_genre.lower() else "불일치"],
         }
         df_results = pd.DataFrame(results)
 
