@@ -1,2 +1,2 @@
-python3-distutils
+ffmpeg
 libsndfile1
