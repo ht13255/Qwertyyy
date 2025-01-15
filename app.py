@@ -49,6 +49,15 @@ def hz_to_note_name(hz):
     return f"{octave}옥타브 {note}"
 
 
+# 지지음역 계산 함수
+def calculate_supported_range(valid_pitches, stability_threshold=0.8):
+    min_pitch = np.min(valid_pitches)
+    max_pitch = np.max(valid_pitches)
+    supported_min = min_pitch * stability_threshold
+    supported_max = max_pitch * stability_threshold
+    return supported_min, supported_max
+
+
 # 음량 조정 함수
 def adjust_volume(y, target_rms=0.1):
     current_rms = np.sqrt(np.mean(y ** 2))
@@ -117,7 +126,7 @@ def evaluate_vocal_skill(file_path, feature_extractor, model):
 
 
 # Streamlit 제목
-st.title("🎤 AI 기반 장르 적합성 및 보컬 실력 평가")
+st.title("🎤 AI 기반 음성 분석 및 지지음역 평가")
 
 # 사용자 입력
 target_genre = st.text_input("분석할 노래 장르를 입력하세요 (예: Pop, Jazz, Rock)", value="Pop")
@@ -152,7 +161,24 @@ if uploaded_file:
         reduced_noise = nr.reduce_noise(y=scaled_y, sr=sr, prop_decrease=0.8)
         st.write("✅ 노이즈 제거 완료.")
 
-        # 5️⃣ Hugging Face 모델 로드 및 AI 분석
+        # 5️⃣ 음역대 분석
+        pitches, magnitudes = librosa.piptrack(y=reduced_noise, sr=sr)
+        valid_pitches = pitches[pitches > 0]
+        min_pitch = np.min(valid_pitches)
+        max_pitch = np.max(valid_pitches)
+        mean_pitch = np.mean(valid_pitches)
+
+        # 옥타브 및 음계 계산
+        min_note = hz_to_note_name(min_pitch)
+        max_note = hz_to_note_name(max_pitch)
+        mean_note = hz_to_note_name(mean_pitch)
+
+        # 지지음역 계산
+        supported_min, supported_max = calculate_supported_range(valid_pitches)
+        supported_min_note = hz_to_note_name(supported_min)
+        supported_max_note = hz_to_note_name(supported_max)
+
+        # 6️⃣ AI 분석
         feature_extractor, model = load_audio_model()
         if feature_extractor and model:
             predicted_genre = "Pop"  # AI 분석 결과를 사용할 경우 수정 가능
@@ -173,6 +199,10 @@ if uploaded_file:
         st.write(f"AI 분석 장르: {predicted_genre}")
         st.write(f"장르 적합성 점수: {genre_score}점 ({genre_grade})")
         st.write(f"보컬 실력 점수: {vocal_skill_score:.2f}점 ({vocal_grade})")
+        st.write(f"최소 음역: {min_pitch:.2f} Hz ({min_note})")
+        st.write(f"최대 음역: {max_pitch:.2f} Hz ({max_note})")
+        st.write(f"평균 음역: {mean_pitch:.2f} Hz ({mean_note})")
+        st.write(f"지지 음역: {supported_min:.2f} Hz ({supported_min_note}) ~ {supported_max:.2f} Hz ({supported_max_note})")
 
         # 결과 저장 기능
         csv_buffer = StringIO()
@@ -183,6 +213,14 @@ if uploaded_file:
             "장르 적합성 등급": [genre_grade],
             "보컬 실력 점수": [vocal_skill_score],
             "보컬 실력 등급": [vocal_grade],
+            "최소 음역 (Hz)": [min_pitch],
+            "최소 음역 (음계)": [min_note],
+            "최대 음역 (Hz)": [max_pitch],
+            "최대 음역 (음계)": [max_note],
+            "평균 음역 (Hz)": [mean_pitch],
+            "평균 음역 (음계)": [mean_note],
+            "지지 음역 (Hz)": [f"{supported_min:.2f} ~ {supported_max:.2f}"],
+            "지지 음역 (음계)": [f"{supported_min_note} ~ {supported_max_note}"],
         }
         df_results = pd.DataFrame(results)
         df_results.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
