@@ -5,11 +5,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import noisereduce as nr
 import pandas as pd
-from transformers import pipeline
-from io import StringIO
+from transformers import AutoModelForAudioClassification, AutoProcessor
 import subprocess
 import os
-import imageio_ffmpeg as ffmpeg  # ffmpeg 경로 설정용
+import imageio_ffmpeg as ffmpeg
+import torch
+import torchaudio
+from io import StringIO
+
 
 # 평가 점수 계산 함수
 def grade(score):
@@ -34,9 +37,10 @@ def grade(score):
     else:
         return "F-"
 
+
 # 업로드된 음성을 WAV 형식으로 변환
 def convert_to_wav(uploaded_file, output_path="temp_audio.wav"):
-    ffmpeg_path = ffmpeg.get_ffmpeg_exe()  # ffmpeg 실행 경로
+    ffmpeg_path = ffmpeg.get_ffmpeg_exe()
     with open("temp_input_file", "wb") as f:
         f.write(uploaded_file.read())
     try:
@@ -51,14 +55,32 @@ def convert_to_wav(uploaded_file, output_path="temp_audio.wav"):
         st.error(f"파일 변환 중 오류 발생: {str(e)}")
         return None
 
-# Hugging Face의 음성 분석 모델 로드
-def load_audio_pipeline():
+
+# Hugging Face 모델 및 처리기 로드
+def load_audio_model():
+    model_name = "superb/hubert-large-superb-er"
     try:
-        # 명시적으로 task와 모델 정의
-        return pipeline(task="audio-classification", model="superb/hubert-large-superb-er")
+        processor = AutoProcessor.from_pretrained(model_name)
+        model = AutoModelForAudioClassification.from_pretrained(model_name)
+        return processor, model
     except Exception as e:
         st.error(f"모델 로드 중 오류 발생: {str(e)}")
+        return None, None
+
+
+# 예측 함수
+def classify_audio(file_path, processor, model):
+    try:
+        waveform, sample_rate = torchaudio.load(file_path)
+        inputs = processor(waveform, sampling_rate=sample_rate, return_tensors="pt", padding=True)
+        with torch.no_grad():
+            logits = model(**inputs).logits
+        predicted_id = torch.argmax(logits, dim=-1).item()
+        return model.config.id2label[predicted_id]
+    except Exception as e:
+        st.error(f"오디오 분류 중 오류 발생: {str(e)}")
         return None
+
 
 # Streamlit 제목
 st.title("🎤 다양한 음성 파일 분석 및 지지음역 계산 애플리케이션")
@@ -105,22 +127,19 @@ if uploaded_file:
 
         # 성량 분석
         rms = librosa.feature.rms(y=reduced_noise).mean() * 100
-        volume_score = min(100, max(50, rms))  # 점수화
+        volume_score = min(100, max(50, rms))
 
-        # 리듬 및 음정 정확도 분석
+        # 리듬 분석
         onset_env = librosa.onset.onset_strength(y=reduced_noise, sr=sr)
         tempo, _ = librosa.beat.beat_track(y=reduced_noise, sr=sr, onset_envelope=onset_env)
         rhythm_accuracy = min(100, max(50, 120 / tempo * 100))
 
-        # Hugging Face 모델 로드
-        classifier = load_audio_pipeline()
-        if classifier:
-            genre_prediction = classifier(wav_path)
-            genre_label = genre_prediction[0]['label']
-            genre_score = genre_prediction[0]['score']
+        # Hugging Face 모델 로드 및 예측
+        processor, model = load_audio_model()
+        if processor and model:
+            genre_label = classify_audio(wav_path, processor, model)
         else:
             genre_label = "분석 실패"
-            genre_score = "N/A"
 
         st.write("✅ 음성 분석 완료.")
 
@@ -134,7 +153,6 @@ if uploaded_file:
             "성량 점수": [f"{volume_score:.2f}점 ({grade(volume_score)})"],
             "리듬 정확도": [f"{rhythm_accuracy:.2f}%"],
             "AI 분석 장르": [genre_label],
-            "장르 정확도": [f"{genre_score:.2f}" if genre_score != "N/A" else genre_score],
             "장르 일치 여부": ["일치" if genre_label.lower() == target_genre.lower() else "불일치"],
         }
         df_results = pd.DataFrame(results)
@@ -145,7 +163,6 @@ if uploaded_file:
 
         # 결과 저장 기능
         st.subheader("📂 분석 결과 저장")
-        # CSV 저장
         csv_buffer = StringIO()
         df_results.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
         st.download_button(
@@ -154,8 +171,6 @@ if uploaded_file:
             file_name="음성_분석_결과.csv",
             mime="text/csv"
         )
-
-        # TXT 저장
         txt_buffer = StringIO()
         for key, value in results.items():
             txt_buffer.write(f"{key}: {value[0]}\n")
