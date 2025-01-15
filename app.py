@@ -7,6 +7,8 @@ import noisereduce as nr
 import pandas as pd
 from transformers import pipeline
 from io import StringIO
+import subprocess
+import os
 
 # 평가 점수 계산 함수
 def grade(score):
@@ -31,22 +33,44 @@ def grade(score):
     else:
         return "F-"
 
+# 업로드된 음성을 WAV 형식으로 변환
+def convert_to_wav(uploaded_file, output_path="temp_audio.wav"):
+    with open("temp_input_file", "wb") as f:
+        f.write(uploaded_file.read())
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", "temp_input_file", output_path],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        return output_path
+    except Exception as e:
+        st.error(f"파일 변환 중 오류 발생: {str(e)}")
+        return None
+
 # Streamlit 제목
-st.title("🎤 음성 분석 및 지지음역 계산 애플리케이션")
+st.title("🎤 다양한 음성 파일 분석 및 지지음역 계산 애플리케이션")
 
 # 사용자 입력 장르
 target_genre = st.text_input("분석할 노래 장르를 입력하세요 (예: Pop, Jazz, Rock)", value="Pop")
 
 # 음성 파일 업로드
-uploaded_file = st.file_uploader("음성을 업로드하세요 (WAV 지원)", type=["wav"])
+uploaded_file = st.file_uploader("음성을 업로드하세요 (MP3, AAC, OGG, WAV 등 지원)", type=["mp3", "wav", "ogg", "aac", "wma"])
 
 if uploaded_file:
     try:
         st.audio(uploaded_file, format="audio/wav")
         st.write("업로드된 음성을 처리 중입니다...")
 
+        # 파일 변환
+        wav_path = convert_to_wav(uploaded_file)
+        if not wav_path:
+            st.error("파일 변환 실패로 분석을 중단합니다.")
+            st.stop()
+
         # 1️⃣ 음성 로드 및 노이즈 제거
-        y, sr = librosa.load(uploaded_file, sr=None)
+        y, sr = librosa.load(wav_path, sr=None)
         reduced_noise = nr.reduce_noise(y=y, sr=sr, prop_decrease=0.8)
         st.write("✅ 노이즈 제거 완료.")
 
@@ -79,7 +103,7 @@ if uploaded_file:
 
         # AI 분석 - 창법 및 장르
         classifier = pipeline("audio-classification", model="superb/hubert-large-superb-er")
-        genre_prediction = classifier(uploaded_file)
+        genre_prediction = classifier(wav_path)
 
         st.write("✅ 음성 분석 완료.")
 
@@ -133,5 +157,9 @@ if uploaded_file:
         st.pyplot(fig)
 
         st.success("🎉 분석 및 개선 사항 제안이 완료되었습니다!")
+
+        # 임시 파일 제거
+        os.remove("temp_input_file")
+        os.remove(wav_path)
     except Exception as e:
         st.error(f"오류 발생: {str(e)}")
