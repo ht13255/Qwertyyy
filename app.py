@@ -98,8 +98,8 @@ if uploaded_file:
         rms = librosa.feature.rms(y=reduced_noise).mean() * 100
         volume_score = min(100, max(50, rms))  # 점수화
 
-        # 리듬 및 음정 정확도 분석
-        onset_env = librosa.onset.onset_strength(reduced_noise, sr=sr)
+        # 리듬 및 음정 정확도 분석 (수정된 부분)
+        onset_env = librosa.onset.onset_strength(y=reduced_noise, sr=sr)
         tempo, _ = librosa.beat.beat_track(y=reduced_noise, sr=sr, onset_envelope=onset_env)
         rhythm_accuracy = min(100, max(50, 120 / tempo * 100))
 
