@@ -65,12 +65,11 @@ def analyze_pitch(y, sr, threshold=0.8):
     :param threshold: 최소 신뢰도 값
     :return: 안정적인 주파수 배열
     """
-    pitches, confidences = librosa.yin(
-        y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'), sr=sr, frame_length=2048
+    pitches = librosa.yin(
+        y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'), sr=sr
     )
-    stable_pitches = pitches[confidences > threshold]  # 최소 신뢰도 이상인 값만 포함
-    stable_pitches = stable_pitches[np.isfinite(stable_pitches)]  # NaN 제거
-    return stable_pitches
+    pitches = pitches[np.isfinite(pitches)]  # NaN 제거
+    return pitches
 
 
 # 지지 음역 계산
