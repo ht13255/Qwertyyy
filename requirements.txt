@@ -1,10 +1,8 @@
-torch
-torchaudio
-transformers>=4.26.0
-librosa
 streamlit
+librosa
 noisereduce
-pandas
+numpy
+torch
+transformers
+scipy
 matplotlib
-imageio-ffmpeg
-ffmpeg-python
