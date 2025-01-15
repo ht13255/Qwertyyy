@@ -56,11 +56,35 @@ def adjust_volume(y, target_rms=0.1):
     return y * adjustment_factor
 
 
-# 정확한 음정 추출을 위한 YIN 기반 분석
-def analyze_pitch(y, sr):
-    pitches = librosa.yin(y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
-    pitches = pitches[np.isfinite(pitches)]  # NaN 제거
-    return pitches
+# YIN 기반 안정적인 음역 분석
+def analyze_pitch(y, sr, threshold=0.8):
+    """
+    안정적인 음역 계산 (YIN 기반)
+    :param y: 오디오 신호
+    :param sr: 샘플링 속도
+    :param threshold: 최소 신뢰도 값
+    :return: 안정적인 주파수 배열
+    """
+    pitches, confidences = librosa.yin(
+        y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'), sr=sr, frame_length=2048
+    )
+    stable_pitches = pitches[confidences > threshold]  # 최소 신뢰도 이상인 값만 포함
+    stable_pitches = stable_pitches[np.isfinite(stable_pitches)]  # NaN 제거
+    return stable_pitches
+
+
+# 지지 음역 계산
+def analyze_supported_range(pitches):
+    """
+    지지 음역 계산 (Stable Pitch Range)
+    :param pitches: 안정적인 주파수 배열
+    :return: 지지 음역 범위 (최소, 최대)
+    """
+    if len(pitches) > 0:
+        min_pitch = np.percentile(pitches, 10)  # 하위 10%
+        max_pitch = np.percentile(pitches, 90)  # 상위 10%
+        return min_pitch, max_pitch
+    return 0, 0
 
 
 # 오디오 데이터 클리닝 함수
@@ -104,7 +128,7 @@ def load_audio_model():
 
 
 # Streamlit 제목
-st.title("🎤 AI 기반 현실적 음성 분석 및 장르 적합성 평가")
+st.title("🎤 AI 기반 고도화된 음성 분석 및 지지 음역 계산")
 
 # 사용자 입력
 target_genre = st.text_input("분석할 노래 장르를 입력하세요 (예: Pop, Jazz, Rock)", value="Pop")
@@ -137,31 +161,32 @@ if uploaded_file:
         reduced_noise = clean_audio(reduced_noise)
         st.write("✅ 노이즈 제거 완료.")
 
-        # 4️⃣ 정확한 음정 분석 (YIN)
+        # 4️⃣ 음역 분석 및 지지 음역 계산
         pitches = analyze_pitch(reduced_noise, sr)
-        min_pitch = np.min(pitches)
-        max_pitch = np.max(pitches)
+        min_pitch, max_pitch = np.min(pitches), np.max(pitches)
         mean_pitch = np.mean(pitches)
+        supported_min, supported_max = analyze_supported_range(pitches)
 
-        # 옥타브 및 음계 계산
+        # 음계 계산
         min_note = hz_to_note_name(min_pitch)
         max_note = hz_to_note_name(max_pitch)
         mean_note = hz_to_note_name(mean_pitch)
+        supported_min_note = hz_to_note_name(supported_min)
+        supported_max_note = hz_to_note_name(supported_max)
 
-        # 5️⃣ 분석 결과 출력
+        # 결과 출력
         st.subheader("🎤 분석 결과")
         st.write(f"최소 음역: {min_pitch:.2f} Hz ({min_note})")
         st.write(f"최대 음역: {max_pitch:.2f} Hz ({max_note})")
         st.write(f"평균 음역: {mean_pitch:.2f} Hz ({mean_note})")
+        st.write(f"지지 음역: {supported_min:.2f} Hz ({supported_min_note}) ~ {supported_max:.2f} Hz ({supported_max_note})")
 
-        # 6️⃣ 결과 저장
+        # 결과 저장
         results = {
             "최소 음역 (Hz)": [min_pitch],
             "최대 음역 (Hz)": [max_pitch],
             "평균 음역 (Hz)": [mean_pitch],
-            "최소 음역 (음계)": [min_note],
-            "최대 음역 (음계)": [max_note],
-            "평균 음역 (음계)": [mean_note],
+            "지지 음역 (Hz)": [f"{supported_min:.2f} ~ {supported_max:.2f}"],
         }
         csv_buffer = StringIO()
         df_results = pd.DataFrame(results)
@@ -173,7 +198,7 @@ if uploaded_file:
             file_name="음성_분석_결과.csv",
             mime="text/csv"
         )
-        st.success("🎉 분석이 완료되었습니다!")
+        st.success("🎉 분석 완료되었습니다!")
 
     except Exception as e:
         st.error(f"오류 발생: {str(e)}")
