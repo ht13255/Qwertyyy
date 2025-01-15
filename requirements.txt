@@ -9,3 +9,6 @@ numpy>=1.23.0,<1.24.0
 tensorflow>=2.12.0  # TensorFlow 설치
 ffmpeg-python
 imageio-ffmpeg
+torch
+torchaudio
+matplotlib
