@@ -4,12 +4,10 @@ import librosa.display
 import numpy as np
 import matplotlib.pyplot as plt
 from spleeter.separator import Separator
-from parselmouth import Sound, call
 from transformers import pipeline
 import noisereduce as nr
 import pandas as pd
 from io import StringIO
-import os
 
 # 평가 점수 계산 함수
 def grade(score):
@@ -66,19 +64,21 @@ if uploaded_file:
 
         # 2️⃣ 음성 분석
         st.write("2️⃣ 음성 분석 중...")
-        sound = Sound(processed_path)
 
-        # (1) 지지음역 분석
-        pitch = call(sound, "To Pitch", 0.0, 75, 600)
-        mean_pitch = call(pitch, "Get mean", 0, 0, "Hertz")
-        min_pitch = call(pitch, "Get minimum", 0, 0, "Hertz", "Parabolic")
-        max_pitch = call(pitch, "Get maximum", 0, 0, "Hertz", "Parabolic")
-        stability_threshold = 0.8  # 안정적으로 소리를 낼 수 있는 임계값
-        supported_range = (min_pitch * stability_threshold, max_pitch * stability_threshold)
+        # 음역대 계산 (parselmouth 제거)
+        pitches, magnitudes = librosa.piptrack(y=reduced_noise, sr=sr)
+        valid_pitches = pitches[pitches > 0]
+        min_pitch = np.min(valid_pitches)
+        max_pitch = np.max(valid_pitches)
+        mean_pitch = np.mean(valid_pitches)
 
         # 옥타브 계산
         min_octave = int(np.log2(min_pitch / 16.35))
         max_octave = int(np.log2(max_pitch / 16.35))
+
+        # 지지음역 계산
+        stability_threshold = 0.8
+        supported_range = (min_pitch * stability_threshold, max_pitch * stability_threshold)
 
         # (2) 성량 분석
         rms = librosa.feature.rms(y=reduced_noise).mean() * 100
