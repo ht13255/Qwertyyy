@@ -5,6 +5,7 @@ transformers
 noisereduce
 pandas>=1.3.0,<1.5.0
 seaborn
-numpy==1.23.5
+numpy>=1.23.0,<1.24.0
+tensorflow>=2.12.0  # TensorFlow 설치
 ffmpeg-python
 imageio-ffmpeg
