@@ -56,15 +56,11 @@ def adjust_volume(y, target_rms=0.1):
     return y * adjustment_factor
 
 
-# Hz 크기 조정 함수
-def scale_hz(y, sr, target_pitch=440.0):
-    pitches, magnitudes = librosa.piptrack(y=y, sr=sr)
-    valid_pitches = pitches[pitches > 0]
-    if len(valid_pitches) > 0:
-        mean_pitch = np.mean(valid_pitches)
-        scaling_factor = target_pitch / mean_pitch
-        return librosa.effects.time_stretch(y, rate=scaling_factor)
-    return y
+# 정확한 음정 추출을 위한 YIN 기반 분석
+def analyze_pitch(y, sr):
+    pitches = librosa.yin(y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
+    pitches = pitches[np.isfinite(pitches)]  # NaN 제거
+    return pitches
 
 
 # 오디오 데이터 클리닝 함수
@@ -108,7 +104,7 @@ def load_audio_model():
 
 
 # Streamlit 제목
-st.title("🎤 AI 기반 음성 분석 및 장르 적합성 평가")
+st.title("🎤 AI 기반 현실적 음성 분석 및 장르 적합성 평가")
 
 # 사용자 입력
 target_genre = st.text_input("분석할 노래 장르를 입력하세요 (예: Pop, Jazz, Rock)", value="Pop")
@@ -129,44 +125,36 @@ if uploaded_file:
 
         # 1️⃣ 음성 로드
         y, sr = librosa.load(wav_path, sr=None)
-        y = clean_audio(y)  # NaN 또는 Infinity 값 제거
+        y = clean_audio(y)
         st.write("✅ 음성 파일 로드 완료.")
 
         # 2️⃣ 음량 자동 조정
         adjusted_y = adjust_volume(y)
         st.write("✅ 음량 조정 완료.")
 
-        # 3️⃣ Hz 크기 자동 조정
-        scaled_y = scale_hz(adjusted_y, sr, target_pitch=440.0)
-        scaled_y = clean_audio(scaled_y)  # 다시 클리닝
-        st.write("✅ Hz 크기 조정 완료.")
-
-        # 4️⃣ 노이즈 제거
-        reduced_noise = nr.reduce_noise(y=scaled_y, sr=sr, prop_decrease=0.8)
-        reduced_noise = clean_audio(reduced_noise)  # 다시 클리닝
+        # 3️⃣ 노이즈 제거
+        reduced_noise = nr.reduce_noise(y=adjusted_y, sr=sr, prop_decrease=0.8)
+        reduced_noise = clean_audio(reduced_noise)
         st.write("✅ 노이즈 제거 완료.")
 
-        # 5️⃣ 음역대 분석
-        pitches, magnitudes = librosa.piptrack(y=reduced_noise, sr=sr)
-        valid_pitches = pitches[pitches > 0]
-        min_pitch = np.min(valid_pitches)
-        max_pitch = np.max(valid_pitches)
-        mean_pitch = np.mean(valid_pitches)
+        # 4️⃣ 정확한 음정 분석 (YIN)
+        pitches = analyze_pitch(reduced_noise, sr)
+        min_pitch = np.min(pitches)
+        max_pitch = np.max(pitches)
+        mean_pitch = np.mean(pitches)
 
         # 옥타브 및 음계 계산
         min_note = hz_to_note_name(min_pitch)
         max_note = hz_to_note_name(max_pitch)
         mean_note = hz_to_note_name(mean_pitch)
 
-        # 분석 결과 출력
+        # 5️⃣ 분석 결과 출력
         st.subheader("🎤 분석 결과")
         st.write(f"최소 음역: {min_pitch:.2f} Hz ({min_note})")
         st.write(f"최대 음역: {max_pitch:.2f} Hz ({max_note})")
         st.write(f"평균 음역: {mean_pitch:.2f} Hz ({mean_note})")
 
-        # 결과 저장
-        csv_buffer = StringIO()
-        txt_buffer = StringIO()
+        # 6️⃣ 결과 저장
         results = {
             "최소 음역 (Hz)": [min_pitch],
             "최대 음역 (Hz)": [max_pitch],
@@ -175,26 +163,17 @@ if uploaded_file:
             "최대 음역 (음계)": [max_note],
             "평균 음역 (음계)": [mean_note],
         }
+        csv_buffer = StringIO()
         df_results = pd.DataFrame(results)
         df_results.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
-        for key, value in results.items():
-            txt_buffer.write(f"{key}: {value[0]}\n")
 
-        # 다운로드 버튼
         st.download_button(
             label="결과를 CSV 파일로 저장",
             data=csv_buffer.getvalue(),
             file_name="음성_분석_결과.csv",
             mime="text/csv"
         )
-        st.download_button(
-            label="결과를 TXT 파일로 저장",
-            data=txt_buffer.getvalue(),
-            file_name="음성_분석_결과.txt",
-            mime="text/plain"
-        )
-
-        st.success("🎉 분석 및 개선 사항 제안이 완료되었습니다!")
+        st.success("🎉 분석이 완료되었습니다!")
 
     except Exception as e:
         st.error(f"오류 발생: {str(e)}")
