@@ -1,0 +1,10 @@
+streamlit
+librosa
+matplotlib
+spleeter
+transformers
+parselmouth
+noisereduce
+pandas
+seaborn
+numpy
