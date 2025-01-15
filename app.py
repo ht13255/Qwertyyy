@@ -146,7 +146,54 @@ if uploaded_file:
         reduced_noise = clean_audio(reduced_noise)  # 다시 클리닝
         st.write("✅ 노이즈 제거 완료.")
 
-        # 나머지 분석 과정...
+        # 5️⃣ 음역대 분석
+        pitches, magnitudes = librosa.piptrack(y=reduced_noise, sr=sr)
+        valid_pitches = pitches[pitches > 0]
+        min_pitch = np.min(valid_pitches)
+        max_pitch = np.max(valid_pitches)
+        mean_pitch = np.mean(valid_pitches)
+
+        # 옥타브 및 음계 계산
+        min_note = hz_to_note_name(min_pitch)
+        max_note = hz_to_note_name(max_pitch)
+        mean_note = hz_to_note_name(mean_pitch)
+
+        # 분석 결과 출력
+        st.subheader("🎤 분석 결과")
+        st.write(f"최소 음역: {min_pitch:.2f} Hz ({min_note})")
+        st.write(f"최대 음역: {max_pitch:.2f} Hz ({max_note})")
+        st.write(f"평균 음역: {mean_pitch:.2f} Hz ({mean_note})")
+
+        # 결과 저장
+        csv_buffer = StringIO()
+        txt_buffer = StringIO()
+        results = {
+            "최소 음역 (Hz)": [min_pitch],
+            "최대 음역 (Hz)": [max_pitch],
+            "평균 음역 (Hz)": [mean_pitch],
+            "최소 음역 (음계)": [min_note],
+            "최대 음역 (음계)": [max_note],
+            "평균 음역 (음계)": [mean_note],
+        }
+        df_results = pd.DataFrame(results)
+        df_results.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+        for key, value in results.items():
+            txt_buffer.write(f"{key}: {value[0]}\n")
+
+        # 다운로드 버튼
+        st.download_button(
+            label="결과를 CSV 파일로 저장",
+            data=csv_buffer.getvalue(),
+            file_name="음성_분석_결과.csv",
+            mime="text/csv"
+        )
+        st.download_button(
+            label="결과를 TXT 파일로 저장",
+            data=txt_buffer.getvalue(),
+            file_name="음성_분석_결과.txt",
+            mime="text/plain"
+        )
+
         st.success("🎉 분석 및 개선 사항 제안이 완료되었습니다!")
 
     except Exception as e:
